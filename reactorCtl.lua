@@ -121,7 +121,7 @@ local function drawGui()
     reactorInfoBox.write(colors.red, 20, 3,  "%s °C", reactor.temperature());
     
     reactorInfoBox.write(colors.white, 1, 4, "Containmentfield:");
-    reactorInfoBox.write(colors.red, 20, 4, "%s", reactor.fieldStrength());
+    reactorInfoBox.write(colors.red, 20, 4, "%s", reactor.info().fieldStrength);
     reactorInfoBox.progressBar(1, 5, {
         percentage = reactor.fieldPercentage(),
         width = 20,

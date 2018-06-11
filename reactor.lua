@@ -19,49 +19,28 @@ end
 -- Reading reactor information
 reactor.info = draconic_reactor.getReactorInfo;
 
-reactor.saturation = function()
-    return reactor.info().energySaturation;
-end
-
 reactor.satPercentage = function()
-    return percentage(reactor.info().maxEnergySaturation, reactor.saturation());
-end
-
-reactor.fieldStrength = function()
-    return reactor.info().fieldStrength;
+    return percentage(reactor.info().maxEnergySaturation, reactor.info().energySaturation;
 end
 
 reactor.fieldPercentage = function()
-    return percentage(reactor.info().maxFieldStrength, reactor.fieldStrength());
-end
-
-reactor.temperature = function()
-    return reactor.info().temperature;
+    return percentage(reactor.info().maxFieldStrength, reactor.info().fieldStrength);
 end
 
 reactor.fuelConversionLevel = function()
     return percentage(reactor.info().maxFuelConversion, reactor.info().fuelConversion)
 end
 
-reactor.status = function()
-    return reactor.info().status;
-end
-
-reactor.outputInfo = function()
-    for i, v in pairs(reactor.info()) do 
-        print(string.format("%s: %q", i, tostring(v))) 
-    end
-end
-
 reactor.shouldCharge = function()
+    local status = reactor.info().status;
     return 
-        (reactor.status() == "cold" or reactor.status() == "stopping") and 
-        reactor.temperature() <= 5000
+        (status == "cold" or status == "stopping") and 
+        reactor.info().temperature < 2000
 end
 
 reactor.shouldActivate = function()
     return
-        (reactor.status() == "warming_up" and reactor.temperature() >= 2000)
+        (reactor.info().status == "warming_up" and reactor.info().temperature >= 2000)
 end
 
 reactor.happyDrain = function()
@@ -70,13 +49,13 @@ end
 
 reactor.initialized = false;
 
-if reactor.status() == "charged" or reactor.status() == "running" then
-    reactor.initialized = true;
+do
+    local status = reactor.info().status
+    if status == "charged" or status == "running" then
+        reactor.initialized = true;
+    end
 end
-
 -- Interaction with the reactor
-reactor.charge = draconic_reactor.chargeReactor;
-reactor.activate = draconic_reactor.activateReactor;
 reactor.stop = function()
     reactor.initialized = false;
     draconic_reactor.stopReactor();
@@ -97,7 +76,7 @@ reactor.autoOutputControl = false;
 
 reactor.raiseOutputByTier = function(tier)
     for i, temp in pairs(tier.maxTemps) do 
-        if reactor.temperature() <= temp then 
+        if reactor.info().temperature <= temp then 
             reactor.setOutputFlow(reactor.getOutputFlow() + tier.steps[i]);
         end
     end
@@ -121,19 +100,18 @@ end
 reactor.run = function()
     if reactor.shouldCharge() then
         reactor.setInputFlow(900000);
-        reactor.charge();
+        draconic_reactor.chargeReactor();
         reactor.initialized = true;
         return reactor.status();
     elseif reactor.shouldActivate() then
         reactor.setInputFlow(200000);
         reactor.setOutputFlow(200000);
-        reactor.activate();
+        draconic_reactor.activateReactor();
     elseif reactor.status() == "running" then
-        if reactor.temperature() >= 7700 or 
+        if reactor.info().temperature >= 7700 or 
         reactor.fieldPercentage() <= 15 or 
         reactor.fuelConversionLevel() >= 88 then
             reactor.stop();
-            reactor.initialized = false;
         end
 
         if reactor.autoInputControl then 
