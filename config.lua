@@ -37,17 +37,17 @@ return {
         tier_3 = {
             targetOut = 10000000;
             minFuelConversion = 5;
-            maxTemps = {3800, 4000};
-            steps = {400000, 250000};
+            maxTemps = {5000};
+            steps = {500000};
             minSaturation = 40;
         },
         tier_4 = {
-            targetOut = 3500000;
+            targetOut = 5000000;
             minFuelConversion = 0;
-            maxTemps = {3600};
-            steps = {75000};
+            maxTemps = {5000};
+            steps = {300000};
             minSaturation = 40;
         }
-
+        
     }
 }

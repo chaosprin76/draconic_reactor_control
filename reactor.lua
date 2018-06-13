@@ -4,64 +4,55 @@ local output = component.proxy(component.get("9af65af1"));
 local input = component.proxy(component.get("8e24f155"));
 local config = require("config");
 
-local reactor = {}
--------------------------------------------------------------------------------
+local baseLib = require("baseLib")
+local settings = baseLib.settings
+local calc = baseLib.calc
 
-function percentage(max, val)
-    if max == 0 then
-        return 0
-    else
-        return math.ceil(val / max * 10000) * 0.01
-    end
-end
+local reactor = {}
 
 -------------------------------------------------------------------------------
 -- Reading reactor information
 reactor.info = draconic_reactor.getReactorInfo;
 
+reactor.is = function(option)
+    return settings.get(option) or false
+end
+
 reactor.satPercentage = function()
-    return percentage(reactor.info().maxEnergySaturation, reactor.info().energySaturation;
+    return calc.percentage(reactor.info().maxEnergySaturation, reactor.info().energySaturation);
 end
 
 reactor.fieldPercentage = function()
-    return percentage(reactor.info().maxFieldStrength, reactor.info().fieldStrength);
+    return calc.percentage(reactor.info().maxFieldStrength, reactor.info().fieldStrength);
 end
 
 reactor.fuelConversionLevel = function()
-    return percentage(reactor.info().maxFuelConversion, reactor.info().fuelConversion)
+    return calc.percentage(reactor.info().maxFuelConversion, reactor.info().fuelConversion)
 end
 
 reactor.shouldCharge = function()
     local status = reactor.info().status;
     return 
-        (status == "cold" or status == "stopping") and 
+        (status == "cold" or status == "stopping" or status == 'cooling') and 
         reactor.info().temperature < 2000
 end
 
 reactor.shouldActivate = function()
     return
-        (reactor.info().status == "warming_up" and reactor.info().temperature >= 2000)
+        (reactor.info().status == "warming_up" 
+        and reactor.info().temperature >= 2000
+        and reactor.is('initialized')
+    )
 end
 
 reactor.happyDrain = function()
     return reactor.info().fieldDrainRate / 0.5
 end
 
-reactor.initialized = false;
 
-do
-    local status = reactor.info().status
-    if status == "charged" or status == "running" then
-        reactor.initialized = true;
-    end
-end
--- Interaction with the reactor
-reactor.stop = function()
-    reactor.initialized = false;
-    draconic_reactor.stopReactor();
-end
+-------------------------------------------------------------------------------
+-- ## control for fluxgates
 
--- Adding flux-gates
 reactor.input_gate = input;
 reactor.output_gate = output;
 
@@ -71,8 +62,56 @@ reactor.setInputFlow = reactor.input_gate.setSignalLowFlow;
 reactor.getOutputFlow = reactor.output_gate.getFlow;
 reactor.setOutputFlow = reactor.output_gate.setSignalLowFlow;
 
-reactor.autoInputControl = true;
-reactor.autoOutputControl = false;
+
+-------------------------------------------------------------------------------
+-- ## control the reactor
+
+
+-- Interaction with the reactor
+reactor.stop = function()
+    if reactor.is('initialized') then
+        settings.set({
+            initialized = false,
+            active = false
+        })
+    end
+    draconic_reactor.stopReactor();
+end
+
+reactor.charge = function(sets)
+    if reactor.shouldCharge() then
+        local sets = sets or {
+            inputFlow = 900000
+        }
+        reactor.setInputFlow(900000)
+        settings.set({initialized = true})
+        settings.set({charging = true})
+        return draconic_reactor.chargeReactor()
+    else
+        if reactor.is('charging') and not reactor.info().status == 'warming_up' then
+            settings.set({charging = false})
+        end
+        return nil
+    end
+end
+
+reactor.activate = function(sets)
+    if reactor.shouldActivate() then
+        local sets = sets or {
+            inputFlow = 200000,
+            outputFlow = 200000
+        }
+        settings.set({
+            charging = false,
+            active = true
+        })
+        reactor.setInputFlow(sets.inputFlow)
+        reactor.setOutputFlow(sets.outputFlow)
+        return draconic_reactor.activateReactor()
+    else
+        return nil
+    end
+end
 
 reactor.raiseOutputByTier = function(tier)
     for i, temp in pairs(tier.maxTemps) do 
@@ -84,8 +123,7 @@ end
 
 reactor.raiseOutput = function()
     if reactor.info().generationRate >= reactor.getOutputFlow() and
-    reactor.fieldPercentage() >= 50 and
-    reactor.fieldPercentage() <= 60 then
+    reactor.fieldPercentage() >= 50  then
         for i, tier in pairs(config.generationTiers) do 
             if reactor.satPercentage() >= tier.minSaturation and
             reactor.fuelConversionLevel() >= tier.minFuelConversion and
@@ -96,33 +134,34 @@ reactor.raiseOutput = function()
     end
 end
 
+reactor.running = function(sets)
+    local sets = sets or {}
+    -- safety first
+    if reactor.info().temperature >= (sets.temperature or 7800)
+    or reactor.fuelConversionLevel() >= (sets.maxFuelConversion or 90) then
+        reactor.stop()
+    end
+
+    if sets.autoInputControl and (not reactor.is('charging')) then
+        reactor.setInputFlow(reactor.happyDrain())
+    end
+
+    if sets.autoOutputControl then
+        reactor.raiseOutput();
+    end
+end
 
 reactor.run = function()
-    if reactor.shouldCharge() then
-        reactor.setInputFlow(900000);
-        draconic_reactor.chargeReactor();
-        reactor.initialized = true;
-        return reactor.status();
-    elseif reactor.shouldActivate() then
-        reactor.setInputFlow(200000);
-        reactor.setOutputFlow(200000);
-        draconic_reactor.activateReactor();
-    elseif reactor.status() == "running" then
-        if reactor.info().temperature >= 7700 or 
-        reactor.fieldPercentage() <= 15 or 
-        reactor.fuelConversionLevel() >= 88 then
-            reactor.stop();
-        end
-
-        if reactor.autoInputControl then 
-            reactor.setInputFlow(reactor.happyDrain()) 
-        end
-
-        if reactor.autoOutputControl then
-            reactor.raiseOutput();
-        end
-
-    end
+    reactor.charge()
+    reactor.activate()
+    local autoInput = settings.get('autoInputControl')
+    local autoOutput = settings.get('autoOutputControl')
+    reactor.running({
+        temperature = 7900,
+        maxFuelConversion = 90,
+        autoInputControl = autoInput,
+        autoOutputControl = autoOutput
+     })
 end
 
 return reactor;

@@ -2,6 +2,7 @@ package.loaded.config = nil;
 package.loaded.gui = nil;
 package.loaded.reactor = nil;
 package.loaded.colorTable = nil;
+package.loaded.baseLib = nil;
 
 local component = require("component");
 local term = require("term");
@@ -13,6 +14,8 @@ local gpu = component.gpu;
 local colors = require("colorTable");
 local config = require("config")
 local gui = require("gui")
+local baseLib = require("baseLib")
+local settings = baseLib.settings;
 
 local run = true;
 -------------------------------------------------------------------------------
@@ -69,12 +72,16 @@ local function getKeyPress(event, address, arg1, arg2, arg3)
         elseif arg2 == keyboard.keys.left then
             onRaise(raiseOutputFlow, true, {})
         elseif arg2 == keyboard.keys.s then
-            reactor.run()
+            if keyboard.isControlDown() and keyboard.isShiftDown() then
+                reactor.stop()
+            else 
+                reactor.run()
+            end
         elseif arg2 == keyboard.keys.i then
-            reactor.autoInputControl = not reactor.autoInputControl;
+            settings.set({autoInputControl = not settings.get('autoInputControl')})
             os.sleep(config.updateRate);
         elseif arg2 == keyboard.keys.o then
-            reactor.autoOutputControl = not reactor.autoOutputControl;
+            settings.set({autoOutputControl = not settings.get('autoOutputControl')})
             os.sleep(config.updateRate)
         end
     end
@@ -100,11 +107,11 @@ local function drawGui()
     fluxGateBox.write(colors.white, 1, 3, "Gate-input:");
     fluxGateBox.write(colors.green, 16, 3, "%s Rf/t", reactor.getInputFlow());
     fluxGateBox.write(colors.white, 1, 4, "Automatic input control enabled: %s",
-        reactor.autoInputControl and "Yes" or "No")
+        settings.get('autoInputControl') and "Yes" or "No")
     fluxGateBox.write(colors.white, 1, 5, "Gate-output:");
     fluxGateBox.write(colors.green, 16, 5, "%s Rf/t", reactor.getOutputFlow());
     fluxGateBox.write(colors.white, 1, 6, "Automatic output control enabled: %s",
-        reactor.autoOutputControl and "Yes" or "No")
+    settings.get('autoOutputControl') and "Yes" or "No")
 
     local reactorInfoBox = gui.drawBox(colors.darkgray, {
         x = fluxGateBox.width + 1,
@@ -118,7 +125,7 @@ local function drawGui()
     
     reactorInfoBox.write(colors.white, 1, 1, "Reactor-stats");
     reactorInfoBox.write(colors.white, 1, 3, "Temperature:");
-    reactorInfoBox.write(colors.red, 20, 3,  "%s °C", reactor.temperature());
+    reactorInfoBox.write(colors.red, 20, 3,  "%s °C", reactor.info().temperature);
     
     reactorInfoBox.write(colors.white, 1, 4, "Containmentfield:");
     reactorInfoBox.write(colors.red, 20, 4, "%s", reactor.info().fieldStrength);
@@ -131,7 +138,7 @@ local function drawGui()
     })
     
     reactorInfoBox.write(colors.white, 1, 6, "Energy-saturation:");
-    reactorInfoBox.write(colors.red, 20, 6, "%s", reactor.saturation());
+    reactorInfoBox.write(colors.red, 20, 6, "%s", reactor.info().saturation);
     reactorInfoBox.progressBar(1, 7, {
         percentage = reactor.satPercentage(),
         width = 20,
@@ -164,7 +171,7 @@ term.setCursorBlink(false);
 
 while run do
     drawGui();
-    if reactor.initialized then
+    if reactor.is('active') then
         reactor.run();
     end
     getKeyPress(event.pull(1));
